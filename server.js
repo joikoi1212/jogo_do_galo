@@ -17,58 +17,86 @@ let currentPlayer = 'X';
 
 // Reset the game state
 function resetGame() {
-  board = Array(9).fill(null);
-  currentPlayer = 'X';
+    board = Array(9).fill(null);
+    currentPlayer = 'X';
 }
 
 // Handle connection
 io.on('connection', (socket) => {
-  console.log('A player connected:', socket.id);
+    console.log('A player connected:', socket.id);
 
-  // Add player to the game if there are less than 2 players
-  if (players.length < 2) {
-    players.push(socket.id);
+    // Add player to the game if there are less than 2 players
+    if (players.length < 2) {
+        players.push(socket.id);
+        socket.emit('gameState', { board, currentPlayer, playerId: socket.id });
 
-    // Send game state to the connected player
-    socket.emit('gameState', { board, currentPlayer, playerId: socket.id });
-
-    // Notify the other player if there are 2 players connected
-    if (players.length === 2) {
-      io.emit('message', { msg: 'Game Start!' });
+        if (players.length === 2) {
+            io.emit('message', { msg: 'Game Start!' });
+        }
+    } else {
+        socket.emit('message', { msg: 'Game is full!' });
+        socket.disconnect();
+        return;
     }
-  } else {
-    socket.emit('message', { msg: 'Game is full!' });
-    socket.disconnect();
-    return;
-  }
-  socket.on('makeMove', (index) => {
-    console.log(`Player ${socket.id} clicked cell ${index}`);
 
-    // Verifique se o índice é válido e se a célula está vazia
-    const playerSymbol = players.indexOf(socket.id) === 0 ? 'X' : 'O'; // Define o símbolo correto do jogador
-    
-    if (board[index] === null && playerSymbol === currentPlayer) {
-      // Atualiza o tabuleiro com o símbolo do jogador
-      board[index] = playerSymbol;
+    socket.on('makeMove', (index) => {
+        console.log(`Player ${socket.id} clicked cell ${index}`);
 
-      // Alterna o jogador atual ('X' ou 'O')
-      currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+        const playerSymbol = players.indexOf(socket.id) === 0 ? 'X' : 'O';
 
-      // Emite o novo estado do jogo para todos os clientes
-      io.emit('gameState', { board, currentPlayer });
-    }
-  });
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('A player disconnected:', socket.id);
-    players = players.filter((player) => player !== socket.id);
-    resetGame();
-    io.emit('message', { msg: 'A player disconnected. Resetting game.' });
-  });
+        if (board[index] === null && playerSymbol === currentPlayer) {
+            board[index] = playerSymbol;
+
+            const winner = checkWinner();
+            if (winner) {
+                io.emit('gameState', { board, currentPlayer, winner });
+                io.emit('message', { msg: `Player ${winner} wins!` });
+                resetGame();
+                return;
+            }
+
+            if (checkTie()) {
+                io.emit('gameState', { board, currentPlayer });
+                io.emit('message', { msg: "It's a tie!" });
+                resetGame();
+                return;
+            }
+
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            io.emit('gameState', { board, currentPlayer });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('A player disconnected:', socket.id);
+        players = players.filter((player) => player !== socket.id);
+        resetGame();
+        io.emit('message', { msg: 'A player disconnected. Resetting game.' });
+    });
 });
 
 // Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
+
+// Helper functions for winner and tie checks
+function checkWinner() {
+    const winningCombinations = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],
+        [0, 4, 8], [2, 4, 6]
+    ];
+    for (let combination of winningCombinations) {
+        const [a, b, c] = combination;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+            return board[a];
+        }
+    }
+    return null;
+}
+
+function checkTie() {
+    return board.every(cell => cell !== null);
+}
