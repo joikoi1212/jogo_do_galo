@@ -13,6 +13,10 @@
   "devDependencies": {
     "nodemon": "^2.0.20"
   },
+  "engines": {
+    "node": ">=v18.19.1"
+  },
   "author": "",
   "license": "ISC"
+  
 }
